@@ -6,78 +6,109 @@
 
 package ecdsa;
 
+import java.math.BigInteger;
+
 /**
  *
  * @author User
  */
 public class Point {
-    private long x;
-    private long y;
-    private long a;
-    public static Point O = new Point(Long.MAX_VALUE, Long.MAX_VALUE);
-
+    private BigInteger x;       //The value of x-absis
+    private BigInteger y;       //The value of y-ordinate
+    private BigInteger a;       //A domain parameter of elliptic curve contains this point
+    private BigInteger p;       //A domain parameter of elliptic curve contains this point
+    private boolean infinity;   
+    public static Point O = new Point(true);
+    
+    //Default constructor for point
     public Point() {
-        this.x = 0;
-        this.y = 1; 
-        this.a = 6;
+        this.x = BigInteger.ZERO; 
+        this.y = BigInteger.ZERO; 
+        this.infinity = false;
     }
     
-    public Point(long x, long y) {
+    //Contructs a point of infinity named O
+    public Point(boolean infinity) {
+        this.x = BigInteger.ZERO;
+        this.y = BigInteger.ZERO; 
+        this.infinity = infinity;
+    }
+    
+    //Constructs a point with defined parameter
+    public Point(BigInteger x, BigInteger y, BigInteger a, BigInteger p) {
         this.x = x;
         this.y = y;
-        this.a = 6;
-    }
-
-    public void setA(long a) {
         this.a = a;
+        this.p = p;
+        this.infinity = false;
     }
     
-    public long getX() {
+    //Check wheter this point is point O
+    public boolean isInfinity(){
+        return this.infinity;
+    }
+    
+    public BigInteger getX() {
         return x;
     }
 
-    public void setX(long x) {
+    public void setX(BigInteger x) {
         this.x = x;
     }
 
-    public long getY() {
+    public BigInteger getY() {
         return y;
     }
 
-    public void setY(long y) {
+    public void setY(BigInteger y) {
         this.y = y;
+    }
+
+    public BigInteger getA() {
+        return a;
+    }
+    
+    public BigInteger getP() {
+        return p;
     }
     
     public Point copy(){
-        Point r = new Point(this.x, this.y);
-        r.setA(this.a);
+        Point r = new Point(this.x, this.y, this.a, this.p);
         return r;
     }
     
     //Returns the inverse of point
     public Point inverse(){
-        Point r = new Point(this.x, -this.y);
-        r.setA(this.a);
+        Point r = new Point(this.x, this.y.negate().mod(p), this.a, this.p);
         return r;
+    }
+    
+    //Check whether the point q is equal to this point 
+    public boolean isEqual(Point q){
+        if ((this.x.compareTo(q.getX()) == 0) && (this.y.compareTo(q.getY()) == 0) && (this.infinity == q.isInfinity())){
+            return true;
+        } else {
+            return false;
+        }
     }
     
     //Returns point result of addition between the point and another point
     public Point addition(Point q){
-        Point r = new Point();
-        if (q == O){
+        if (q.isEqual(O)){
             return this.copy();
-        } else if (this == O){
+        } else if (this.isEqual(O)){
             return q;
-        } else if (this.inverse() == q){
+        } else if (this.inverse().isEqual(q)){
             return O;
-        } else if (this.x == q.getX()){
+        } else if (this.isEqual(q)){
+            return this.doubling();
+        } else if (this.x.compareTo(q.getX()) == 0){
             return O;
         } else {
-            long lambda = ((this.y - q.getY())/(this.x - q.getX()));  //Calculate the gradient of line
-            long _x = (lambda * lambda - this.x - q.getX());
-            long _y = (lambda * (this.x - _x) - this.y) ;
-            r.setX(_x);
-            r.setY(_y);
+            BigInteger lambda = ((this.y.subtract(q.getY())).multiply((this.x.subtract(q.getX())).modInverse(p))).mod(p);  //Calculate the slope of line
+            BigInteger _x = (lambda.pow(2).subtract(this.x)).subtract(q.getX());
+            BigInteger _y = (lambda.multiply(this.x.subtract(_x))).subtract(this.y) ;
+            Point r = new Point(_x.mod(p), _y.mod(p), this.a, this.p);
             return r;
         }
     }
@@ -91,24 +122,21 @@ public class Point {
     
     //Returns point result of addition between the point and itself
     public Point doubling(){
-        if (this.y == 0){
+        if (this.y.compareTo(BigInteger.ZERO) == 0){
             return O;
         } else {
-            Point r = new Point();
-            long lambda = (3 * this.x * this.x + this.a)/(2 * y);  //Menghitung gradien garis
-            lambda = lambda ;
-            long _x = (lambda * lambda - 2 * this.x) ;
-            long _y = ((lambda * (this.x - _x) - this.y)) ;
-            r.setX(_x);
-            r.setY(_y);            
+            BigInteger lambda = ((this.x.pow(2).multiply(BigInteger.valueOf(3))).add(this.a)).multiply((this.y.multiply(BigInteger.valueOf(2))).modInverse(p));  //Menghitung gradien garis
+            BigInteger _x = (lambda.pow(2)).subtract(this.x.multiply(BigInteger.valueOf(2))) ;
+            BigInteger _y = (lambda.multiply(this.x.subtract(_x))).subtract(this.y) ;
+            Point r = new Point(_x.mod(p), _y.mod(p), this.a, this.p);            
             return r;
         }
     }
     
     //Returns point result of addition between the point and itself for k-1 times
-    public Point iteration(long k){
+    public Point iteration(BigInteger k){
         Point r = this.copy();
-        for (long i=1; i<k-1; i++){
+        for (BigInteger i=BigInteger.ONE; i.compareTo(k.subtract(BigInteger.ONE)) == -1; i = i.add(BigInteger.ONE)){
             r.addition(this);
         }
         return r;
@@ -118,26 +146,26 @@ public class Point {
     //The point multiplication is obtained by rounding two basic elliptic kurve:
     //1. Point Addition (P + Q = R)
     //2. Point Doubling (2P = R)
-    public Point multiplication(long k){
+    public Point multiplication(BigInteger k){
         Point r = new Point();
-        if (k == 0){
+        if (k.compareTo(BigInteger.ZERO) == 0){
             return O;
         }
-        if (k == 1){
+        if (k.compareTo(BigInteger.ONE) == 0){
             return this.copy();
-        } else if (k % 2 == 1) {
-            r = this.addition(this.multiplication(k-1));
+        } else if (k.mod(BigInteger.valueOf(2)).compareTo(BigInteger.ONE) == 0) {
+            r = this.addition(this.multiplication(k.subtract(BigInteger.ONE)));
             return r;
         } else {
             Point temp = this.doubling();
-            r = temp.multiplication(k/2);
+            r = temp.multiplication(k.divide(BigInteger.valueOf(2)));
             return r;
         }
     }
     
-    //Returns a string representation of point
-    public String toString(){
-        String r = "" + x + " " + y;
+    //Returns hex string representation of point
+    public String toHexString(){
+        String r = x.toString(16) + y.toString(16);
         return r;
     }
 }
